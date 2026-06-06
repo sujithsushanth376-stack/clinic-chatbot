@@ -1,0 +1,48 @@
+const express = require("express");
+const axios = require("axios");
+const app = express();
+app.use(express.json());
+
+// This receives messages from WhatsApp
+app.post("/webhook", async (req, res) => {
+  const message = req.body.message; // patient's text
+  const phone = req.body.phone;     // patient's number
+
+  // Send to Claude AI
+  const aiReply = await getAIReply(message);
+
+  // Send reply back to patient's WhatsApp
+  await sendWhatsApp(phone, aiReply);
+
+  res.json({ status: "ok" });
+});
+
+async function getAIReply(message) {
+  const response = await axios.post(
+    "https://api.anthropic.com/v1/messages",
+    {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 500,
+      messages: [{ role: "user", content: `
+        You are a WhatsApp health assistant for a clinic in India.
+        Reply in Hinglish, max 60 words, warm and helpful.
+        Never diagnose. For emergencies say call 112.
+        Patient message: ${message}
+      `}]
+    },
+    { headers: { "Content-Type": "application/json" } }
+  );
+  return response.data.content[0].text;
+}
+
+async function sendWhatsApp(phone, message) {
+  // AiSensy API call to send message
+  await axios.post("https://backend.aisensy.com/campaign/t1/api", {
+    apiKey: "YOUR_AISENSY_API_KEY",
+    campaignName: "clinic_reply",
+    destination: phone,
+    message: message,
+  });
+}
+
+app.listen(3000, () => console.log("Server running!"));
